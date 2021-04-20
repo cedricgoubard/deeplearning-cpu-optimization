@@ -1,0 +1,4 @@
+# Copy this file and remove the final .example
+
+MODELS_PATH: "/path/to/models"  # Path to the folder where you wish to save the trained models
+DATA_PATH: "/path/to/data"      # Path to the folder where you wish to save the results of the benchmark
