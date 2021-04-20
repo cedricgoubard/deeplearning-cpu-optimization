@@ -1,7 +1,7 @@
-from Format import SendFormatResults
-from Knowledge import SendKnowledgeResults
-from Pruning import SendPruningResults
-from TFlite import SendTFliteResults
+from format import SendFormatResults
+from knowledge import SendKnowledgeResults
+from pruning import SendPruningResults
+from tflite import SendTFliteResults
 
 print('Waiting for the Format experimentation...')
 SendFormatResults()
