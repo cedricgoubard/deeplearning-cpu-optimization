@@ -9,17 +9,6 @@ from datetime import datetime
 import pandas as pd
 import signal
 
-
-(x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
-couche1=64
-couche2=128
-dense=512
-iteration=50
-timeout_training=900
-timeout_predict=120
-method_name='Format des inputs/layers'
-model_name='CNN'
-
 class timeout:
     def __init__(self, seconds=1, error_message='Timeout'):
         self.seconds = seconds
@@ -32,7 +21,7 @@ class timeout:
     def __exit__(self, type, value, traceback):
         signal.alarm(0)
         
-def GetModel(layers_type=None):
+def get_model(layers_type,couche1,couche2,dense):
     if layers_type==None:
         pass
     else:
@@ -48,40 +37,41 @@ def GetModel(layers_type=None):
         tf.keras.layers.Dense(100,dtype=layers_type)])
     return model 
 
-def GetParametersNumber(model):
+def get_parameters_number(model):
     trainable_count = np.sum([K.count_params(w) for w in model.trainable_weights])
     non_trainable_count = np.sum([K.count_params(w) for w in model.non_trainable_weights])
     return trainable_count+non_trainable_count
 
-def GetTime(model_name,inputs_type,layers_type,iteration,time_out):
+def get_infos(inputs_type,layers_type,iteration,couche1,couche2,dense):
+    
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
+    
     x_train_type = x_train.astype(inputs_type)
     x_test_type = x_test.astype(inputs_type)
     
     start_cpu_t,start_wall_t=process_time(),time()
-    model=GetModel(layers_type=layers_type)
+    model=get_model(layers_type,couche1,couche2,dense)
 
     model.compile(optimizer=tf.keras.optimizers.Adam(),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],)
     try:
-        with timeout(seconds=timeout_training):
+        with timeout(seconds=900):
 
-            nb_params=GetParametersNumber(model)
+            nb_params=get_parameters_number(model)
             date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             parameters={'inputs_type':inputs_type,'layers_type':layers_type}
             model.fit(x_train, y_train, epochs=3,verbose=0)
             stop_cpu_t,stop_wall_t=process_time(),time()
             cpu_time=stop_cpu_t-start_cpu_t
             wall_time=stop_wall_t-start_cpu_t
-            temps_cpu=[]
-            temps_wall=[]
-            accuracys=[]
-            with timeout(seconds=time_out):
+            temps_cpu,temps_wall,accuracys=[],[],[]
+            with timeout(seconds=120):
                 try:
                     try:
                         for k in range(iteration):
                             start_cpu,start_wall=process_time(),time()
-                            y_pred=model.predict(x_test)
+                            y_pred=model.predict(x_test_type)
                             stop_cpu,stop_wall=process_time(),time()
                             temps_cpu.append(stop_cpu-start_cpu)
                             temps_wall.append(stop_wall-start_wall)
@@ -96,10 +86,7 @@ def GetTime(model_name,inputs_type,layers_type,iteration,time_out):
     except:
                     return 'timeout','timeout','timeout',date,parameters,nb_params,'timeout','timeout'
 
-def SendFormatResults():       
-
-    layers_types=['float32','float64']
-    inputs_types=['int8','int16','int32','float16','float32']
+def send_format_results(couche1,couche2,dense,iteration,layers_types,inputs_types,path):       
 
     default_value=tf.keras.backend.floatx()
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
@@ -107,14 +94,20 @@ def SendFormatResults():
     result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date','Méthode','Paramètres','CPU + Sys time','Wall Time','Précision','Training time(cpu)','Training time(wall)'])
     for inputs_type in inputs_types:
         for layers_type in layers_types:
-            time_cpu,time_wall,accuracy,date,parameters,nb_params,cpu_time,wall_time=GetTime(model_name,inputs_type,layers_type,iteration=iteration,time_out=timeout_predict)
-            result=result.append({'Modèle':model_name,'CPU + Sys time':time_cpu,'Wall time':time_wall,'Précision':accuracy,'Date':date,'Méthode':method_name,'Paramètres':parameters,'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_time,'Training time(wall)':wall_time}, ignore_index=True)
-            print('Modèle: ',model_name,'Input: ',inputs_type, '&', 'Layers: ',layers_type,'--> time_cpu:',time_cpu,'->time_wall:',time_wall,'-> accuracy:',accuracy)
+            time_cpu,time_wall,accuracy,date,parameters,nb_params,cpu_time,wall_time=get_infos(inputs_type,layers_type,iteration,couche1,couche2,dense)
+            result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,'Wall time':time_wall,'Précision':accuracy,'Date':date,'Méthode':'Format des inputs/layers','Paramètres':parameters,'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_time,'Training time(wall)':wall_time}, ignore_index=True)
+            print('Input: ',inputs_type, '&', 'Layers: ',layers_type,'--> time_cpu:',time_cpu,'->time_wall:',time_wall,'-> accuracy:',accuracy)
     try:    
-        results=pd.read_csv('/home/arnaudhureaux/deeplearning-cpu-optimization/outputs/results.csv')
+        results=pd.read_csv(path)
         results=pd.concat((results,result),axis=0).reset_index(drop=True)
-        results.to_csv('/home/arnaudhureaux/deeplearning-cpu-optimization/outputs/results.csv',index=False,header=True,encoding='utf-8-sig')
+        results.to_csv(path,index=False,header=True,encoding='utf-8-sig')
     except:
-        result.to_csv('/home/arnaudhureaux/deeplearning-cpu-optimization/outputs/results.csv',index=False,header=True,encoding='utf-8-sig')
+        result.to_csv(path,index=False,header=True,encoding='utf-8-sig')
         
-SendFormatResults()
+send_format_results(couche1=32,
+                  couche2=64,
+                  dense=64,
+                  iteration=30,
+                  layers_types=['float32','float64'],
+                  inputs_types=['int8','int16','int32','float16','float32'],
+                  path='/home/arnaudhureaux/git-repo/deeplearning-cpu-optimization/outputs/results.csv')

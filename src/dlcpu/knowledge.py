@@ -1,23 +1,19 @@
 from time import process_time, time
 from statistics import mean
 import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
+# from tensorflow import keras
+# from tensorflow.keras import layers
 import numpy as np
 import tensorflow.keras.backend as K
 from sklearn.metrics import accuracy_score
 import pandas as pd
 from datetime import datetime
 
-(x_train, y_train), (x_test, y_test) = keras.datasets.cifar100.load_data()
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
 x_train = x_train.astype("float32") / 255.0
 x_test = x_test.astype("float32") / 255.0
-couche1=64
-couche2=128
-dense=512
-iteration=50
 
-class Distiller(keras.Model):
+class Distiller(tf.keras.Model):
     def __init__(self, student, teacher):
         super(Distiller, self).__init__()
         self.teacher = teacher
@@ -105,24 +101,24 @@ class Distiller(keras.Model):
         results.update({"student_loss": student_loss})
         return results
 
-def Compile(model):
+def compile_model(model):
     model.compile(
-        optimizer=keras.optimizers.Adam(),
-        loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        metrics=[keras.metrics.SparseCategoricalAccuracy()],
+        optimizer=tf.keras.optimizers.Adam(),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
     )
     return model
-def Fit(model):
+def fit(model):
     model.fit(x_train, y_train, epochs=3,verbose=0)
     return model
 
-def GetParametersNumber(model):
+def get_parameters_number(model):
     trainable_count = np.sum([K.count_params(w) for w in model.trainable_weights])
     non_trainable_count = np.sum([K.count_params(w) for w in model.non_trainable_weights])
     return trainable_count+non_trainable_count
 
-def GetTime(model):
-    nb_params=GetParametersNumber(model)
+def get_time(model,iteration):
+    nb_params=get_parameters_number(model)
     accuracys=[]
     temps_cpu=[]
     temps_wall=[]
@@ -137,72 +133,70 @@ def GetTime(model):
         accuracys.append(accuracy_score(np.argmax(y_pred,1),y_test))
     return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params
 
-def GetTeacher(couche1,couche2,dense):
-    teacher = keras.Sequential(
-        [   keras.Input(shape=(32, 32, 3)),
-            layers.Conv2D(couche1*2, (3, 3), strides=(2, 2), padding="same"),
-            layers.LeakyReLU(alpha=0.2),
-            layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
-            layers.Conv2D(couche2*2, (3, 3), strides=(2, 2), padding="same"),
-            layers.Flatten(),
-            layers.Dense(dense*2,activation='relu'),
-            layers.Dense(100),],
+def get_teacher(couche1,couche2,dense):
+    teacher = tf.keras.Sequential(
+        [   tf.keras.Input(shape=(32, 32, 3)),
+            tf.keras.layers.Conv2D(couche1*2, (3, 3), strides=(2, 2), padding="same"),
+            tf.keras.layers.LeakyReLU(alpha=0.2),
+            tf.keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
+            tf.keras.layers.Conv2D(couche2*2, (3, 3), strides=(2, 2), padding="same"),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(dense*2,activation='relu'),
+            tf.keras.layers.Dense(100),],
         name="teacher",)
     return teacher
-def GetStudent(couche1,couche2,dense):
-    student = keras.Sequential(
-        [   keras.Input(shape=(32, 32, 3)),
-            layers.Conv2D(couche1, (3, 3), strides=(2, 2), padding="same"),
-            layers.LeakyReLU(alpha=0.2),
-            layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
-            layers.Conv2D(couche2, (3, 3), strides=(2, 2), padding="same"),
-            layers.Flatten(),
-            layers.Dense(dense,activation='relu'),
-            layers.Dense(100),],
+def get_student(couche1,couche2,dense):
+    student = tf.keras.Sequential(
+        [   tf.keras.Input(shape=(32, 32, 3)),
+            tf.keras.layers.Conv2D(couche1, (3, 3), strides=(2, 2), padding="same"),
+            tf.keras.layers.LeakyReLU(alpha=0.2),
+            tf.keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
+            tf.keras.layers.Conv2D(couche2, (3, 3), strides=(2, 2), padding="same"),
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(dense,activation='relu'),
+            tf.keras.layers.Dense(100),],
         name="student",)
     return student
 
 
-def SendKnowledgeResults():
-    method_name='Knowledge Distilation'
-    model_name='CNN'
+def send_knowledge_results(couche1,couche2,dense,iteration,path):
 
-    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar100.load_data()
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
     x_train = x_train.astype("float32") / 255.0
     x_test = x_test.astype("float32") / 255.0
 
     # teacher
     start_cpu,start_wall=process_time(),time()
-    teacher=GetTeacher(couche1,couche2,dense)
-    Compile(teacher)
-    Fit(teacher)
+    teacher=get_teacher(couche1,couche2,dense)
+    compile_model(teacher)
+    fit(teacher)
     stop_cpu,stop_wall=process_time(),time()
     teacher_cpu=stop_cpu-start_cpu
     teacher_wall=stop_wall-start_wall
 
     # student
     start_cpu,start_wall=process_time(),time()
-    student=GetStudent(couche1,couche2,dense)
+    student=get_student(couche1,couche2,dense)
     distiller = Distiller(student=student, teacher=teacher)
     distiller.compile(
-        optimizer=keras.optimizers.Adam(),
-        metrics=[keras.metrics.SparseCategoricalAccuracy()],
-        student_loss_fn=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        distillation_loss_fn=keras.losses.KLDivergence(),
+        optimizer=tf.keras.optimizers.Adam(),
+        metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
+        student_loss_fn=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        distillation_loss_fn=tf.keras.losses.KLDivergence(),
         alpha=0.1,
         temperature=10,
     )
-    Fit(distiller)
+    fit(distiller)
     stop_cpu,stop_wall=process_time(),time()
     student_cpu=stop_cpu-start_cpu
     student_wall=stop_wall-start_wall
 
     # baseline
     start_cpu,start_wall=process_time(),time()
-    student_scratch = keras.models.clone_model(student)
+    student_scratch = tf.keras.models.clone_model(student)
     student_scratch._name='baseline'
-    Compile(student_scratch)
-    Fit(student_scratch)
+    compile_model(student_scratch)
+    fit(student_scratch)
     stop_cpu,stop_wall=process_time(),time()
     baseline_cpu=stop_cpu-start_cpu
     baseline_wall=stop_wall-start_wall
@@ -213,15 +207,21 @@ def SendKnowledgeResults():
 
     result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date','Méthode','Paramètres','CPU + Sys time','Précision','Wall Time','Training time(cpu)','Training time(wall)'])
     for k in range(len(models)):
-        time_cpu,time_wall,accuracy,date,parameters,nb_params=GetTime(models[k])
-        result=result.append({'Modèle':model_name,'CPU + Sys time':time_cpu,'Wall Time':time_wall,'Précision':accuracy,'Date':date,'Méthode':method_name,'Paramètres':parameters,'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_time[k],'Training time(wall)':wall_time[k]}, ignore_index=True)
-        print('Méthode: ',method_name,'Modèle: ',model_name,'Paramètre: ',parameters['Nom du modèle'],'--> time_cpu:',time_cpu,'->time_wall:',time_wall,'-> accuracy:',accuracy)
+        time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],iteration)
+        result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,'Wall Time':time_wall,'Précision':accuracy,'Date':date,'Méthode':'Knowledge Distilation','Paramètres':parameters,'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_time[k],'Training time(wall)':wall_time[k]}, ignore_index=True)
+        print('Méthode: ','Knowledge Distilation','Modèle: CNN','Paramètre: ',parameters['Nom du modèle'],'--> time_cpu:',time_cpu,'->time_wall:',time_wall,'-> accuracy:',accuracy)
 
     try:    
-        results=pd.read_csv('/home/arnaudhureaux/deeplearning-cpu-optimization/outputs/results.csv')
+        results=pd.read_csv(path)
         results=pd.concat((results,result),axis=0).reset_index(drop=True)
-        results.to_csv('/home/arnaudhureaux/deeplearning-cpu-optimization/outputs/results.csv',index=False,header=True,encoding='utf-8-sig')
+        results.to_csv(path,index=False,header=True,encoding='utf-8-sig')
     except:
-        result.to_csv('/home/arnaudhureaux/deeplearning-cpu-optimization/outputs/results.csv',index=False,header=True,encoding='utf-8-sig')
+        result.to_csv(path,index=False,header=True,encoding='utf-8-sig')
 
-#SendKnowledgeResults()
+send_knowledge_results(
+    couche1=32,
+    couche2=64,
+    dense=64,
+    iteration=30,
+    path='/home/arnaudhureaux/git-repo/deeplearning-cpu-optimization/outputs/results.csv',
+    )
