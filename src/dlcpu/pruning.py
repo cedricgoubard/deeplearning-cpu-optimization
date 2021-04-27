@@ -97,35 +97,36 @@ def get_time(model,x_test,y_test,iteration):
         accuracys.append(accuracy_score(np.argmax(y_pred,1),y_test))
     return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params
 
-def send_pruning_results(couche1,couche2,dense,iteration):
-    path=get_path_outputs()
-    
-    cifar100 = tf.keras.datasets.cifar100
-    (x_train, y_train), (x_test, y_test) = cifar100.load_data()
-    x_train = x_train / 255.0
-    x_test = x_test / 255.0
+def send_pruning_results(couche1,couche2,dense,iteration,train,pred):
+    with tf.device('/'+train+':0'):   
+        path=get_path_outputs()
+        cifar100 = tf.keras.datasets.cifar100
+        (x_train, y_train), (x_test, y_test) = cifar100.load_data()
+        x_train = x_train / 255.0
+        x_test = x_test / 255.0
 
-    baseline,cpu_base,wall_base=get_simple_model(couche1,couche2,dense,x_train,y_train)
-    pruned,cpu_prun,wall_prun=get_pruned_model(baseline,x_train,y_train)
-    models=[baseline,pruned]
-    cpu_times=[cpu_base,cpu_prun]
-    wall_times=[wall_base,wall_prun]
+        baseline,cpu_base,wall_base=get_simple_model(couche1,couche2,dense,x_train,y_train)
+        pruned,cpu_prun,wall_prun=get_pruned_model(baseline,x_train,y_train)
+        models=[baseline,pruned]
+        cpu_times=[cpu_base,cpu_prun]
+        wall_times=[wall_base,wall_prun]
     result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date',
                                  'Méthode','Paramètres','CPU + Sys time',
                                  'Précision','Wall Time','Training time(cpu)',
                                  'Training time(wall)'])
-    for k in range(len(models)):
-        time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],x_test,y_test,iteration)
-        result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,
-                              'Wall Time':time_wall,'Précision':accuracy,
-                              'Date':date,'Méthode':'Pruning','Paramètres':parameters,
-                              'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_times[k],
-                              'Training time(wall)':wall_times[k]}, ignore_index=True)
-        print('Méthode: ','Pruning',
-              'Modèle: ','CNN','Paramètre: ',
-              parameters['Nom du modèle'],'-> accuracy:',accuracy,
-              '-> time_cpu:',time_cpu,'->time_wall:',time_wall)
-    filename='results.csv'
+    with tf.device('/'+pred+':0'):   
+        for k in range(len(models)):
+            time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],x_test,y_test,iteration)
+            result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,
+                                  'Wall Time':time_wall,'Précision':accuracy,
+                                  'Date':date,'Méthode':'Pruning','Paramètres':parameters,
+                                  'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_times[k],
+                                  'Training time(wall)':wall_times[k]}, ignore_index=True)
+            print('Méthode: ','Pruning',
+                  'Modèle: ','CNN','Paramètre: ',
+                  parameters['Nom du modèle'],'-> accuracy:',accuracy,
+                  '-> time_cpu:',time_cpu,'->time_wall:',time_wall)
+        filename='results.csv'
     try:    
         results=pd.read_csv(path+filename)
         results=pd.concat((results,result),axis=0).reset_index(drop=True)
@@ -136,4 +137,6 @@ def send_pruning_results(couche1,couche2,dense,iteration):
 send_pruning_results(couche1=32,
     couche2=64,
     dense=64,
-    iteration=50)
+    iteration=50,
+    train='CPU',
+    pred='CPU')

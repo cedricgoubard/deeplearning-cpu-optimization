@@ -256,56 +256,63 @@ def get_batch_time(model,method):
     else:
         print('Wrong method !')
 
-def send_data(result,time_cpu,time_wall,accuracy,date,parameters,nb_params,cpu_time,wall_time,time_batch):
+def send_data(result,time_cpu,time_wall,accuracy,date,parameters,
+              nb_params,cpu_time,wall_time,time_batch,train,pred):
     result=result.append({'CPU batch time':time_batch,'Modèle':'CNN',
                           'CPU + Sys time':time_cpu,'Wall Time':time_wall,
                           'Précision':accuracy,'Date':date,'Méthode':'TFLite',
                           'Paramètres':parameters,'Nb(paramètres)':nb_params,
-                          'Training time(cpu)':cpu_time,'Training time(wall)':wall_time}, ignore_index=True)
+                          'Training time(cpu)':cpu_time,'Training time(wall)':wall_time,
+                         'Train':train,'Pred':pred}, ignore_index=True)
     return result
 
-def send_tflite_results(nb_test,couche1,couche2,dense):
-    path_output=get_path_outputs()
+def send_tflite_results(nb_test,couche1,couche2,dense,train,pred):
+    with tf.device('/'+train+':0'):
+        path_output=get_path_outputs()
 
-    result=pd.DataFrame(columns=['Modèle','Nb(paramètres)',
-                                 'Date','Méthode','Paramètres',
-                                 'CPU + Sys time','Précision',
-                                 'Wall Time','Training time(cpu)',
-                                 'Training time(wall)','CPU batch time'])
+        result=pd.DataFrame(columns=['Modèle','Nb(paramètres)',
+                                     'Date','Méthode','Paramètres',
+                                     'CPU + Sys time','Précision',
+                                     'Wall Time','Training time(cpu)',
+                                     'Training time(wall)','CPU batch time',
+                                     'Train','Pred'])
 
-    model,simple_cpu,simple_wall=get_simple_model(couche1,couche2,dense)
-    #model_pruned=get_pruned_model(model) #ne fonctionne pas avec TFlite
-    model_copy = tf.keras.models.clone_model(model)
-    model_clustered,clust_cpu,clust_wall=get_clustered_model(model_copy)
+        model,simple_cpu,simple_wall=get_simple_model(couche1,couche2,dense)
+        #model_pruned=get_pruned_model(model) #ne fonctionne pas avec TFlite
+        model_copy = tf.keras.models.clone_model(model)
+        model_clustered,clust_cpu,clust_wall=get_clustered_model(model_copy)
 
-    model4quantization,prequant_cpu,prequant_wall = get_simple_model_quantization(couche1,couche2,dense)
-    model_quantized,quant_cpu,quant_wall=get_quantized_model(model4quantization)
+        model4quantization,prequant_cpu,prequant_wall = get_simple_model_quantization(couche1,couche2,dense)
+        model_quantized,quant_cpu,quant_wall=get_quantized_model(model4quantization)
 
-    cpu_times=[simple_cpu,simple_cpu+clust_cpu,prequant_cpu+quant_cpu]
-    wall_times=[simple_wall,simple_wall+clust_wall,prequant_wall+quant_wall]
-    names=['Baseline','Weight_Clustering','Quantized']
-    models=[model,model_clustered,model_quantized]
+        cpu_times=[simple_cpu,simple_cpu+clust_cpu,prequant_cpu+quant_cpu]
+        wall_times=[simple_wall,simple_wall+clust_wall,prequant_wall+quant_wall]
+        names=['Baseline','Weight_Clustering','Quantized']
+        models=[model,model_clustered,model_quantized]
 
-    for k in range(len(names)):
-        time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],names[k],nb_test)
-        time_batch=get_batch_time(models[k],'classic')
-        result=send_data(result,time_cpu,time_wall,
-                         accuracy,date,parameters,nb_params,
-                         cpu_times[k],wall_times[k],time_batch)
+    with tf.device('/'+pred+':0'):    
+        for k in range(len(names)):
+            time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],names[k],nb_test)
+            time_batch=get_batch_time(models[k],'classic')
+            result=send_data(result,time_cpu,time_wall,
+                             accuracy,date,parameters,nb_params,
+                             cpu_times[k],wall_times[k],time_batch,
+                             train,pred)
 
-    names=['TFlite(baseline)','TFlite(weight clustering)','TFlite(quantization)']
-    for k in range(len(names)):
-        start_cpu,start_wall=process_time(),time()
-        interpreter=get_tfl_model(models[k],path_output)
-        stop_cpu,stop_wall=process_time(),time()
-        temps_cpu_l=stop_cpu-start_cpu
-        temps_wall_l=stop_wall-start_wall
-        time_cpu,time_wall,accuracy,date,parameters,nb_params=get_tfl_time(interpreter,names[k],nb_test)
-        time_batch=get_batch_time(interpreter,'tfl')
-        result=send_data(result,time_cpu,time_wall,
-                         accuracy,date,parameters,nb_params,
-                         temps_cpu_l+cpu_times[k],
-                         temps_wall_l+wall_times[k],time_batch)
+        names=['TFlite(baseline)','TFlite(weight clustering)','TFlite(quantization)']
+        for k in range(len(names)):
+            start_cpu,start_wall=process_time(),time()
+            interpreter=get_tfl_model(models[k],path_output)
+            stop_cpu,stop_wall=process_time(),time()
+            temps_cpu_l=stop_cpu-start_cpu
+            temps_wall_l=stop_wall-start_wall
+            time_cpu,time_wall,accuracy,date,parameters,nb_params=get_tfl_time(interpreter,names[k],nb_test)
+            time_batch=get_batch_time(interpreter,'tfl')
+            result=send_data(result,time_cpu,time_wall,
+                             accuracy,date,parameters,nb_params,
+                             temps_cpu_l+cpu_times[k],
+                             temps_wall_l+wall_times[k],time_batch,
+                             train,pred)
     filename='results.csv'
     try:    
         results=pd.read_csv(path_output+filename)
@@ -316,6 +323,8 @@ def send_tflite_results(nb_test,couche1,couche2,dense):
         
         
 result=send_tflite_results(nb_test=100,
-    couche1=32,
-    couche2=64,
-    dense=64)
+    couche1=8,
+    couche2=8,
+    dense=8,
+    train='GPU',
+    pred='CPU')

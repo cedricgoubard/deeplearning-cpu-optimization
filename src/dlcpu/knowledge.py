@@ -157,75 +157,81 @@ def get_student(couche1,couche2,dense):
         name="student",)
     return student
 
-def send_knowledge_results(couche1,couche2,dense,iteration):
+def send_knowledge_results(couche1,couche2,dense,iteration,train,pred):
     path=get_path_outputs()
     
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
     x_train = x_train.astype("float32") / 255.0
     x_test = x_test.astype("float32") / 255.0
-    # teacher
-    start_cpu,start_wall=process_time(),time()
-    teacher=get_teacher(couche1,couche2,dense)
-    compile_model(teacher)
-    fit(teacher)
-    stop_cpu,stop_wall=process_time(),time()
-    teacher_cpu=stop_cpu-start_cpu
-    teacher_wall=stop_wall-start_wall
-    # student
-    start_cpu,start_wall=process_time(),time()
-    student=get_student(couche1,couche2,dense)
-    distiller = Distiller(student=student, teacher=teacher)
-    distiller.compile(
-        optimizer=tf.keras.optimizers.Adam(),
-        metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
-        student_loss_fn=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-        distillation_loss_fn=tf.keras.losses.KLDivergence(),
-        alpha=0.1,
-        temperature=10,
-    )
-    fit(distiller)
-    stop_cpu,stop_wall=process_time(),time()
-    student_cpu=stop_cpu-start_cpu
-    student_wall=stop_wall-start_wall
-    # baseline
-    start_cpu,start_wall=process_time(),time()
-    student_scratch = tf.keras.models.clone_model(student)
-    student_scratch._name='baseline'
-    compile_model(student_scratch)
-    fit(student_scratch)
-    stop_cpu,stop_wall=process_time(),time()
-    baseline_cpu=stop_cpu-start_cpu
-    baseline_wall=stop_wall-start_wall
-    cpu_time=[student_cpu,teacher_cpu,baseline_cpu]
-    wall_time=[student_wall,teacher_wall,baseline_wall]
-    models=[distiller.student,teacher,student_scratch]
+    
+    with tf.device('/'+train+':0'):    
+        # teacher
+        start_cpu,start_wall=process_time(),time()
+        teacher=get_teacher(couche1,couche2,dense)
+        compile_model(teacher)
+        fit(teacher)
+        stop_cpu,stop_wall=process_time(),time()
+        teacher_cpu=stop_cpu-start_cpu
+        teacher_wall=stop_wall-start_wall
+        # student
+        start_cpu,start_wall=process_time(),time()
+        student=get_student(couche1,couche2,dense)
+        distiller = Distiller(student=student, teacher=teacher)
+        distiller.compile(
+            optimizer=tf.keras.optimizers.Adam(),
+            metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],
+            student_loss_fn=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+            distillation_loss_fn=tf.keras.losses.KLDivergence(),
+            alpha=0.1,
+            temperature=10,
+        )
+        fit(distiller)
+        stop_cpu,stop_wall=process_time(),time()
+        student_cpu=stop_cpu-start_cpu
+        student_wall=stop_wall-start_wall
+        # baseline
+        start_cpu,start_wall=process_time(),time()
+        student_scratch = tf.keras.models.clone_model(student)
+        student_scratch._name='baseline'
+        compile_model(student_scratch)
+        fit(student_scratch)
+        stop_cpu,stop_wall=process_time(),time()
+        baseline_cpu=stop_cpu-start_cpu
+        baseline_wall=stop_wall-start_wall
+        cpu_time=[student_cpu,teacher_cpu,baseline_cpu]
+        wall_time=[student_wall,teacher_wall,baseline_wall]
+        models=[distiller.student,teacher,student_scratch]
 
     result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date',
                                  'Méthode','Paramètres','CPU + Sys time',
                                  'Précision','Wall Time','Training time(cpu)',
-                                 'Training time(wall)'])
-    for k in range(len(models)):
-        time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],iteration)
-        result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,'Wall Time':time_wall,
-                              'Précision':accuracy,'Date':date,'Méthode':'Knowledge Distilation',
-                              'Paramètres':parameters,'Nb(paramètres)':nb_params,
-                              'Training time(cpu)':cpu_time[k],'Training time(wall)':wall_time[k]}, 
-                             ignore_index=True)
-        print('Méthode: ','Knowledge Distilation',
-              'Modèle: CNN','Paramètre: ',
-              parameters['Nom du modèle'],'--> time_cpu:',
-              time_cpu,'->time_wall:',
-              time_wall,'-> accuracy:',accuracy)
-    filename='results.csv'
-    try:    
-        results=pd.read_csv(path+filename)
-        results=pd.concat((results,result),axis=0).reset_index(drop=True)
-        results.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
-    except:
-        result.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
+                                 'Training time(wall)','Train','Pred'])
+    with tf.device('/'+pred+':0'):    
+        for k in range(len(models)):
+            time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],iteration)
+            result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,'Wall Time':time_wall,
+                                  'Précision':accuracy,'Date':date,'Méthode':'Knowledge Distilation',
+                                  'Paramètres':parameters,'Nb(paramètres)':nb_params,
+                                  'Training time(cpu)':cpu_time[k],'Training time(wall)':wall_time[k],
+                                  'Train':train,'Pred':pred}, 
+                                 ignore_index=True)
+            print('Méthode: ','Knowledge Distilation',
+                  'Modèle: CNN','Paramètre: ',
+                  parameters['Nom du modèle'],'--> time_cpu:',
+                  time_cpu,'->time_wall:',
+                  time_wall,'-> accuracy:',accuracy)
+        filename='results.csv'
+        try:    
+            results=pd.read_csv(path+filename)
+            results=pd.concat((results,result),axis=0).reset_index(drop=True)
+            results.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
+        except:
+            result.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
 
 send_knowledge_results(
     couche1=32,
     couche2=64,
     dense=64,
-    iteration=30)
+    iteration=30,
+    train='GPU',
+    pred='GPU')

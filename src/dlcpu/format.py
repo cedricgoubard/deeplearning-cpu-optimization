@@ -45,7 +45,7 @@ def get_parameters_number(model):
     non_trainable_count = np.sum([tf.keras.backend.count_params(w) for w in model.non_trainable_weights])
     return trainable_count+non_trainable_count
 
-def get_time(inputs_type,layers_type,iteration,couche1,couche2,dense):
+def get_time(inputs_type,layers_type,iteration,couche1,couche2,dense,train,pred):
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
     x_train_type = x_train.astype(inputs_type)
     x_test_type = x_test.astype(inputs_type)
@@ -58,34 +58,35 @@ def get_time(inputs_type,layers_type,iteration,couche1,couche2,dense):
         metrics=[tf.keras.metrics.SparseCategoricalAccuracy()],)
     try:
         with timeout(seconds=1200):
-
-            nb_params=get_parameters_number(model)
-            date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            parameters={'inputs_type':inputs_type,'layers_type':layers_type}
-            model.fit(x_train, y_train, epochs=3,verbose=0)
-            stop_cpu_t,stop_wall_t=process_time(),time()
-            cpu_time=stop_cpu_t-start_cpu_t
-            wall_time=stop_wall_t-start_cpu_t
-            temps_cpu=[]
-            temps_wall=[]
-            accuracys=[]
-            with timeout(seconds=time_out):
-                try:
+            with tf.device('/'+train+':0'): 
+                nb_params=get_parameters_number(model)
+                date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                parameters={'inputs_type':inputs_type,'layers_type':layers_type}
+                model.fit(x_train, y_train, epochs=3,verbose=0)
+                stop_cpu_t,stop_wall_t=process_time(),time()
+                cpu_time=stop_cpu_t-start_cpu_t
+                wall_time=stop_wall_t-start_cpu_t
+                temps_cpu=[]
+                temps_wall=[]
+                accuracys=[]
+            with tf.device('/'+pred+':0'): 
+                with timeout(seconds=150):
                     try:
-                        for k in range(iteration):
-                            start_cpu,start_wall=process_time(),time()
-                            y_pred=model.predict(x_test)
-                            stop_cpu,stop_wall=process_time(),time()
-                            temps_cpu.append(stop_cpu-start_cpu)
-                            temps_wall.append(stop_wall-start_wall)
-                            accuracys.append(accuracy_score(np.argmax(y_pred,1),y_test))
-                        tf.keras.backend.set_floatx(default_value)
+                        try:
+                            for k in range(iteration):
+                                start_cpu,start_wall=process_time(),time()
+                                y_pred=model.predict(x_test)
+                                stop_cpu,stop_wall=process_time(),time()
+                                temps_cpu.append(stop_cpu-start_cpu)
+                                temps_wall.append(stop_wall-start_wall)
+                                accuracys.append(accuracy_score(np.argmax(y_pred,1),y_test))
+                            tf.keras.backend.set_floatx(default_value)
+                            return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params,cpu_time,wall_time
+                        except Exception as e:
+                            tf.keras.backend.set_floatx(default_value)
+                            return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params,cpu_time,wall_time
+                    except:
                         return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params,cpu_time,wall_time
-                    except Exception as e:
-                        tf.keras.backend.set_floatx(default_value)
-                        return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params,cpu_time,wall_time
-                except:
-                    return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params,cpu_time,wall_time
     except:
                     return 'timeout','timeout','timeout',date,parameters,nb_params,'timeout','timeout'
 
@@ -94,26 +95,30 @@ def send_format_results(layers_types,
                     couche1,
                     couche2,
                     dense,
-                    iteration):       
+                    iteration,
+                    train,
+                    pred):   
+    
     path_output=get_path_outputs()
-
     default_value=tf.keras.backend.floatx()
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
 
     result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date',
         'Méthode','Paramètres','CPU + Sys time','Wall Time','Précision',
-        'Training time(cpu)','Training time(wall)'])
+        'Training time(cpu)','Training time(wall)','Train','Pred'])
     for inputs_type in inputs_types:
         for layers_type in layers_types:
             time_cpu,time_wall,accuracy,date,parameters,nb_params,cpu_time,wall_time=get_time(
                                                                                     inputs_type,
                                                                                     layers_type,
                                                                                     iteration,
-                                                                                    couche1,couche2,dense)
+                                                                                    couche1,couche2,dense,
+                                                                                    train,pred)
             result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,
                 'Wall time':time_wall,'Précision':accuracy,'Date':date,
                 'Méthode':'Format des inputs/layers','Paramètres':parameters,'Nb(paramètres)':nb_params,
-                'Training time(cpu)':cpu_time,'Training time(wall)':wall_time},
+                'Training time(cpu)':cpu_time,'Training time(wall)':wall_time,
+                'Train':train,'Pred':pred},
                  ignore_index=True)
             print('Modèle: ','CNN','Input: ',inputs_type,
              '&', 'Layers: ',layers_type,
@@ -133,4 +138,6 @@ send_format_results(layers_types=[None],#=['float32','float64'],
                     couche1=32,
                     couche2=32,
                     dense=64,
-                    iteration=30)
+                    iteration=30,
+                    train='CPU',
+                    pred='CPU')
