@@ -1,13 +1,11 @@
 from time import process_time, time
 from statistics import mean
 import tensorflow as tf
-# from tensorflow import keras
-# from tensorflow.keras import layers
 import numpy as np
-import tensorflow.keras.backend as K
 from sklearn.metrics import accuracy_score
 import pandas as pd
 from datetime import datetime
+import os
 
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
 x_train = x_train.astype("float32") / 255.0
@@ -100,7 +98,10 @@ class Distiller(tf.keras.Model):
         results = {m.name: m.result() for m in self.metrics}
         results.update({"student_loss": student_loss})
         return results
-
+    
+def get_path_outputs():
+    return os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','')+'/outputs'
+    
 def compile_model(model):
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
@@ -113,15 +114,13 @@ def fit(model):
     return model
 
 def get_parameters_number(model):
-    trainable_count = np.sum([K.count_params(w) for w in model.trainable_weights])
-    non_trainable_count = np.sum([K.count_params(w) for w in model.non_trainable_weights])
+    trainable_count = np.sum([tf.keras.backend.count_params(w) for w in model.trainable_weights])
+    non_trainable_count = np.sum([tf.keras.backend.count_params(w) for w in model.non_trainable_weights])
     return trainable_count+non_trainable_count
 
 def get_time(model,iteration):
     nb_params=get_parameters_number(model)
-    accuracys=[]
-    temps_cpu=[]
-    temps_wall=[]
+    accuracys,temps_cpu,temps_wall=[],[],[]
     date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     parameters={'Nom du modèle':model.name}
     for k in range(iteration):
@@ -158,13 +157,12 @@ def get_student(couche1,couche2,dense):
         name="student",)
     return student
 
-
-def send_knowledge_results(couche1,couche2,dense,iteration,path):
-
+def send_knowledge_results(couche1,couche2,dense,iteration):
+    path=get_path_outputs()
+    
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
     x_train = x_train.astype("float32") / 255.0
     x_test = x_test.astype("float32") / 255.0
-
     # teacher
     start_cpu,start_wall=process_time(),time()
     teacher=get_teacher(couche1,couche2,dense)
@@ -173,7 +171,6 @@ def send_knowledge_results(couche1,couche2,dense,iteration,path):
     stop_cpu,stop_wall=process_time(),time()
     teacher_cpu=stop_cpu-start_cpu
     teacher_wall=stop_wall-start_wall
-
     # student
     start_cpu,start_wall=process_time(),time()
     student=get_student(couche1,couche2,dense)
@@ -190,7 +187,6 @@ def send_knowledge_results(couche1,couche2,dense,iteration,path):
     stop_cpu,stop_wall=process_time(),time()
     student_cpu=stop_cpu-start_cpu
     student_wall=stop_wall-start_wall
-
     # baseline
     start_cpu,start_wall=process_time(),time()
     student_scratch = tf.keras.models.clone_model(student)
@@ -200,28 +196,36 @@ def send_knowledge_results(couche1,couche2,dense,iteration,path):
     stop_cpu,stop_wall=process_time(),time()
     baseline_cpu=stop_cpu-start_cpu
     baseline_wall=stop_wall-start_wall
-
     cpu_time=[student_cpu,teacher_cpu,baseline_cpu]
     wall_time=[student_wall,teacher_wall,baseline_wall]
     models=[distiller.student,teacher,student_scratch]
 
-    result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date','Méthode','Paramètres','CPU + Sys time','Précision','Wall Time','Training time(cpu)','Training time(wall)'])
+    result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date',
+                                 'Méthode','Paramètres','CPU + Sys time',
+                                 'Précision','Wall Time','Training time(cpu)',
+                                 'Training time(wall)'])
     for k in range(len(models)):
         time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],iteration)
-        result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,'Wall Time':time_wall,'Précision':accuracy,'Date':date,'Méthode':'Knowledge Distilation','Paramètres':parameters,'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_time[k],'Training time(wall)':wall_time[k]}, ignore_index=True)
-        print('Méthode: ','Knowledge Distilation','Modèle: CNN','Paramètre: ',parameters['Nom du modèle'],'--> time_cpu:',time_cpu,'->time_wall:',time_wall,'-> accuracy:',accuracy)
-
+        result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,'Wall Time':time_wall,
+                              'Précision':accuracy,'Date':date,'Méthode':'Knowledge Distilation',
+                              'Paramètres':parameters,'Nb(paramètres)':nb_params,
+                              'Training time(cpu)':cpu_time[k],'Training time(wall)':wall_time[k]}, 
+                             ignore_index=True)
+        print('Méthode: ','Knowledge Distilation',
+              'Modèle: CNN','Paramètre: ',
+              parameters['Nom du modèle'],'--> time_cpu:',
+              time_cpu,'->time_wall:',
+              time_wall,'-> accuracy:',accuracy)
+    filename='results.csv'
     try:    
-        results=pd.read_csv(path)
+        results=pd.read_csv(path+filename)
         results=pd.concat((results,result),axis=0).reset_index(drop=True)
-        results.to_csv(path,index=False,header=True,encoding='utf-8-sig')
+        results.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
     except:
-        result.to_csv(path,index=False,header=True,encoding='utf-8-sig')
+        result.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
 
 send_knowledge_results(
     couche1=32,
     couche2=64,
     dense=64,
-    iteration=30,
-    path='/home/arnaudhureaux/git-repo/deeplearning-cpu-optimization/outputs/results.csv',
-    )
+    iteration=30)

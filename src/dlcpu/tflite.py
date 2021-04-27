@@ -1,15 +1,16 @@
 from time import process_time, time
 import tempfile
-import os
+from datetime import datetime
+from statistics import mean
 from sklearn.metrics import accuracy_score
 import tensorflow as tf
-import numpy as np
-from tensorflow import keras
 import tensorflow_model_optimization as tfmot
+import numpy as np
 import pandas as pd
-from datetime import datetime
-import tensorflow.keras.backend as K
-from statistics import mean
+import os
+
+def get_path_outputs():
+    return os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','')+'/outputs'
 
 def get_data():
     cifar100 = tf.keras.datasets.cifar100
@@ -21,22 +22,22 @@ def get_data():
     return x_train,y_train,x_test,y_test,X_test_numpy
 
 def get_parameters_number(model):
-    trainable_count = np.sum([K.count_params(w) for w in model.trainable_weights])
-    non_trainable_count = np.sum([K.count_params(w) for w in model.non_trainable_weights])
+    trainable_count = np.sum([tf.keras.backend.count_params(w) for w in model.trainable_weights])
+    non_trainable_count = np.sum([tf.keras.backend.count_params(w) for w in model.non_trainable_weights])
     return trainable_count+non_trainable_count
 
 def get_simple_model(couche1,couche2,dense):
-    x_train,y_train,x_test,y_test,X_test_numpy=get_data()
+    x_train,y_train,_,_,_=get_data()
     start_cpu,start_wall=process_time(),time()
     model = tf.keras.Sequential([
-      keras.layers.InputLayer(input_shape=(32, 32,3)),
-      keras.layers.Conv2D(couche1, (3, 3), strides=(2, 2), padding="same"),
-      keras.layers.LeakyReLU(alpha=0.2),
-      keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
-      keras.layers.Conv2D(couche2, (3, 3), strides=(2, 2), padding="same"),
-      keras.layers.Flatten(),
-      keras.layers.Dense(dense, activation='relu'),
-      keras.layers.Dense(100),
+      tf.keras.layers.InputLayer(input_shape=(32, 32,3)),
+      tf.keras.layers.Conv2D(couche1, (3, 3), strides=(2, 2), padding="same"),
+      tf.keras.layers.LeakyReLU(alpha=0.2),
+      tf.keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
+      tf.keras.layers.Conv2D(couche2, (3, 3), strides=(2, 2), padding="same"),
+      tf.keras.layers.Flatten(),
+      tf.keras.layers.Dense(dense, activation='relu'),
+      tf.keras.layers.Dense(100),
     ])
     model._name='baseline'
     model.compile(optimizer=tf.keras.optimizers.Adam(),
@@ -49,17 +50,17 @@ def get_simple_model(couche1,couche2,dense):
     temps_wall=stop_wall-start_wall
     return model,temps_cpu,temps_wall
 def get_simple_model_quantization(couche1,couche2,dense):
-    x_train,y_train,x_test,y_test,X_test_numpy=get_data()
+    x_train,y_train,_,_,_=get_data()
     start_cpu,start_wall=process_time(),time()
     model = tf.keras.Sequential([
-      keras.layers.InputLayer(input_shape=(32, 32,3)),
-      keras.layers.Conv2D(couche1, (3, 3), strides=(2, 2), padding="same"),
-#      keras.layers.LeakyReLU(alpha=0.2),
-      keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
-      keras.layers.Conv2D(couche2, (3, 3), strides=(2, 2), padding="same"),
-      keras.layers.Flatten(),
-      keras.layers.Dense(dense, activation='relu'),
-      keras.layers.Dense(100),
+      tf.keras.layers.InputLayer(input_shape=(32, 32,3)),
+      tf.keras.layers.Conv2D(couche1, (3, 3), strides=(2, 2), padding="same"),
+#      tf.keras.layers.LeakyReLU(alpha=0.2),
+      tf.keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
+      tf.keras.layers.Conv2D(couche2, (3, 3), strides=(2, 2), padding="same"),
+      tf.keras.layers.Flatten(),
+      tf.keras.layers.Dense(dense, activation='relu'),
+      tf.keras.layers.Dense(100),
     ])
     model._name='baseline'
     model.compile(optimizer=tf.keras.optimizers.Adam(),
@@ -70,10 +71,10 @@ def get_simple_model_quantization(couche1,couche2,dense):
     stop_cpu,stop_wall=process_time(),time()
     temps_cpu=stop_cpu-start_cpu
     temps_wall=stop_wall-start_wall
-    return model
+    return model,temps_cpu,temps_wall
 
 def get_clustered_model(model):
-    x_train,y_train,x_test,y_test,X_test_numpy=get_data()
+    x_train,y_train,_,_,_=get_data()
     start_cpu,start_wall=process_time(),time()
     cluster_weights = tfmot.clustering.keras.cluster_weights
     CentroidInitialization = tfmot.clustering.keras.CentroidInitialization
@@ -101,7 +102,7 @@ def get_clustered_model(model):
     return clustered_model,temps_cpu,temps_wall
 
 def get_quantized_model(model):
-    x_train,y_train,x_test,y_test,X_test_numpy=get_data()
+    x_train,y_train,_,_,_=get_data()
     start_cpu,start_wall=process_time(),time()
     quantize_model = tfmot.quantization.keras.quantize_model
 
@@ -119,7 +120,7 @@ def get_quantized_model(model):
 
 #ne fonctionne pas avec TFlite
 def get_pruned_model(model):
-    x_train,y_train,x_test,y_test,X_test_numpy=get_data()
+    x_train,y_train,_,_,_=get_data()
     start_cpu,start_wall=process_time(),time()
     prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
 
@@ -171,7 +172,7 @@ def get_tfl_model(model,path_output):
     return interpreter
 #pour les modèles classiques
 def get_time(model_input,parameters,nb_test):
-    x_train,y_train,x_test,y_test,X_test_numpy=get_data()
+    _,_,x_test,y_test,_=get_data()
     nb_params=get_parameters_number(model_input)
     predictions=[]
     temps_cpu=[]
@@ -187,8 +188,17 @@ def get_time(model_input,parameters,nb_test):
     accuracy=accuracy_score(np.array(predictions),y_test[0:nb_test][:,0])
     return mean(temps_cpu),mean(temps_wall),accuracy,date,parameters,nb_params
 #pour les modèles TFlite
+def tfl_prediction(X_test_numpy,i):
+    inp = X_test_numpy[i]
+    inp = inp.reshape(1 ,32, 32,3)
+    interpreter.set_tensor(0,inp )
+    interpreter.invoke()
+    tflite_model_predictions = interpreter.get_tensor(16)
+    prediction_classes = np.argmax(tflite_model_predictions, axis=1)
+    return prediction_classes[0]
+    
 def get_tfl_time(interpreter,parameters,nb_test):
-    x_train,y_train,x_test,y_test,X_test_numpy=get_data()
+    _,_,_,y_test,X_test_numpy=get_data()
     nb_params=None
     date=datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     pred = []
@@ -213,50 +223,99 @@ def get_tfl_time(interpreter,parameters,nb_test):
     return mean(temps_cpu),mean(temps_wall),accuracy,date,parameters,nb_params
 #pour enregistrer les infos dans result
 
-def send_data(result,time_cpu,time_wall,accuracy,date,parameters,nb_params,cpu_time,wall_time):
-    result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,'Wall Time':time_wall,'Précision':accuracy,'Date':date,'Méthode':'TFLite','Paramètres':parameters,'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_time,'Training time(wall)':wall_time}, ignore_index=True)
+#to get batch time
+def get_prediction_tfl(x,interpreter):
+    inp = x
+    inp = inp.reshape(1,32, 32,3)
+    interpreter.set_tensor(0,inp )
+    interpreter.invoke()
+    tflite_model_predictions = interpreter.get_tensor(16)
+    prediction_classes = np.argmax(tflite_model_predictions, axis=1)
+    return prediction_classes[0]
+def get_batch_time(model,method):
+    _,_,x_test,_,X_test_numpy=get_data()
+    if method=='tfl':
+        interpreter=model
+        time_cpu=[]
+        for k in range(5):
+            start_wall,start_cpu=time(),process_time()
+            pred=[]
+            for k in X_test_numpy:
+                pred.append(get_prediction_tfl(k,interpreter))
+            stop_wall,stop_cpu=time(),process_time()
+            time_cpu.append(stop_cpu-start_cpu)
+        return mean(time_cpu)
+    elif method=='classic':
+        time_cpu=[]
+        for k in range(5):
+            start_wall,start_cpu=time(),process_time()
+            model.predict(x_test)
+            stop_wall,stop_cpu=time(),process_time()
+            time_cpu.append(stop_cpu-start_cpu)
+        return mean(time_cpu)
+    else:
+        print('Wrong method !')
+
+def send_data(result,time_cpu,time_wall,accuracy,date,parameters,nb_params,cpu_time,wall_time,time_batch):
+    result=result.append({'CPU batch time':time_batch,'Modèle':'CNN',
+                          'CPU + Sys time':time_cpu,'Wall Time':time_wall,
+                          'Précision':accuracy,'Date':date,'Méthode':'TFLite',
+                          'Paramètres':parameters,'Nb(paramètres)':nb_params,
+                          'Training time(cpu)':cpu_time,'Training time(wall)':wall_time}, ignore_index=True)
     return result
 
-def send_tflite_results(nb_test,couche1,couche2,dense,path_output):
+def send_tflite_results(nb_test,couche1,couche2,dense):
+    path_output=get_path_outputs()
 
-
-    result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date','Méthode','Paramètres','CPU + Sys time','Précision','Wall Time','Training time(cpu)','Training time(wall)'])
+    result=pd.DataFrame(columns=['Modèle','Nb(paramètres)',
+                                 'Date','Méthode','Paramètres',
+                                 'CPU + Sys time','Précision',
+                                 'Wall Time','Training time(cpu)',
+                                 'Training time(wall)','CPU batch time'])
 
     model,simple_cpu,simple_wall=get_simple_model(couche1,couche2,dense)
     #model_pruned=get_pruned_model(model) #ne fonctionne pas avec TFlite
-    model_copy = keras.models.clone_model(model)
+    model_copy = tf.keras.models.clone_model(model)
     model_clustered,clust_cpu,clust_wall=get_clustered_model(model_copy)
 
-    model4quantization = get_simple_model_quantization(couche1,couche2,dense)
+    model4quantization,prequant_cpu,prequant_wall = get_simple_model_quantization(couche1,couche2,dense)
     model_quantized,quant_cpu,quant_wall=get_quantized_model(model4quantization)
 
-    cpu_times=[simple_cpu,simple_cpu+clust_cpu,simple_cpu+quant_cpu]
-    wall_times=[simple_wall,simple_wall+clust_wall,simple_wall+quant_wall]
+    cpu_times=[simple_cpu,simple_cpu+clust_cpu,prequant_cpu+quant_cpu]
+    wall_times=[simple_wall,simple_wall+clust_wall,prequant_wall+quant_wall]
     names=['Baseline','Weight_Clustering','Quantized']
     models=[model,model_clustered,model_quantized]
 
     for k in range(len(names)):
         time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],names[k],nb_test)
-        result=send_data(result,time_cpu,time_wall,accuracy,date,parameters,nb_params,cpu_times[k],wall_times[k])
+        time_batch=get_batch_time(models[k],'classic')
+        result=send_data(result,time_cpu,time_wall,
+                         accuracy,date,parameters,nb_params,
+                         cpu_times[k],wall_times[k],time_batch)
 
     names=['TFlite(baseline)','TFlite(weight clustering)','TFlite(quantization)']
     for k in range(len(names)):
         start_cpu,start_wall=process_time(),time()
-        intepreter=get_tfl_model(models[k],path_output)
-        time_cpu,time_wall,accuracy,date,parameters,nb_params=get_tfl_time(intepreter,names[k],nb_test)
+        interpreter=get_tfl_model(models[k],path_output)
         stop_cpu,stop_wall=process_time(),time()
         temps_cpu_l=stop_cpu-start_cpu
         temps_wall_l=stop_wall-start_wall
-        result=send_data(result,time_cpu,time_wall,accuracy,date,parameters,nb_params,temps_cpu_l+cpu_times[k],temps_wall_l+wall_times[k])
-
+        time_cpu,time_wall,accuracy,date,parameters,nb_params=get_tfl_time(interpreter,names[k],nb_test)
+        time_batch=get_batch_time(interpreter,'tfl')
+        result=send_data(result,time_cpu,time_wall,
+                         accuracy,date,parameters,nb_params,
+                         temps_cpu_l+cpu_times[k],
+                         temps_wall_l+wall_times[k],time_batch)
+    filename='results.csv'
     try:    
-        results=pd.read_csv(path_output+'results.csv')
+        results=pd.read_csv(path_output+filename)
         results=pd.concat((results,result),axis=0).reset_index(drop=True)
-        results.to_csv(path_output+'results.csv',index=False,header=True,encoding='utf-8-sig')
+        results.to_csv(path_output+filename,index=False,header=True,encoding='utf-8-sig')
     except:
-        result.to_csv(path_output+'results.csv',index=False,header=True,encoding='utf-8-sig')
-send_tflite_results(nb_test=10000,
+        result.to_csv(path_output+filename,index=False,header=True,encoding='utf-8-sig')
+        
+        
+result=send_tflite_results(nb_test=100,
     couche1=32,
     couche2=64,
-    dense=64,
-    path_output='/home/arnaudhureaux/git-repo/deeplearning-cpu-optimization/outputs/')
+    dense=64)

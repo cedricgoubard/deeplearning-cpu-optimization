@@ -10,10 +10,8 @@ from datetime import datetime
 import tensorflow.keras.backend as K
 from statistics import mean
 
-cifar100 = tf.keras.datasets.cifar100
-(x_train, y_train), (x_test, y_test) = cifar100.load_data()
-x_train = x_train / 255.0
-x_test = x_test / 255.0
+def get_path_outputs():
+    return os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','')+'/outputs'
 
 def get_paramaters_number(model):
     trainable_count = np.sum([K.count_params(w) for w in model.trainable_weights])
@@ -61,8 +59,8 @@ def get_pruned_model(model,x_train,y_train):
 #                                                                    end_step=end_step)
 #     }
     pruning_params = {
-          'pruning_schedule': tfmot.sparsity.keras.ConstantSparsity(target_sparsity=0.80,
-                                                                    begin_step=0, end_step=-1, frequency=100)
+    'pruning_schedule': tfmot.sparsity.keras.ConstantSparsity(target_sparsity=0.80,
+                                  begin_step=0, end_step=-1, frequency=100)
         }
     
     model_for_pruning = prune_low_magnitude(model, **pruning_params)
@@ -99,8 +97,9 @@ def get_time(model,x_test,y_test,iteration):
         accuracys.append(accuracy_score(np.argmax(y_pred,1),y_test))
     return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params
 
-def send_pruning_results(couche1,couche2,dense,iteration,path):
-
+def send_pruning_results(couche1,couche2,dense,iteration):
+    path=get_path_outputs()
+    
     cifar100 = tf.keras.datasets.cifar100
     (x_train, y_train), (x_test, y_test) = cifar100.load_data()
     x_train = x_train / 255.0
@@ -111,22 +110,30 @@ def send_pruning_results(couche1,couche2,dense,iteration,path):
     models=[baseline,pruned]
     cpu_times=[cpu_base,cpu_prun]
     wall_times=[wall_base,wall_prun]
-    result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date','Méthode','Paramètres','CPU + Sys time','Précision','Wall Time','Training time(cpu)','Training time(wall)'])
+    result=pd.DataFrame(columns=['Modèle','Nb(paramètres)','Date',
+                                 'Méthode','Paramètres','CPU + Sys time',
+                                 'Précision','Wall Time','Training time(cpu)',
+                                 'Training time(wall)'])
     for k in range(len(models)):
         time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],x_test,y_test,iteration)
-        result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,'Wall Time':time_wall,'Précision':accuracy,'Date':date,'Méthode':'Pruning','Paramètres':parameters,'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_times[k],'Training time(wall)':wall_times[k]}, ignore_index=True)
-        print('Méthode: ','Pruning','Modèle: ','CNN','Paramètre: ',parameters['Nom du modèle'],'-> accuracy:',accuracy,'-> time_cpu:',time_cpu,'->time_wall:',time_wall)
-
-
+        result=result.append({'Modèle':'CNN','CPU + Sys time':time_cpu,
+                              'Wall Time':time_wall,'Précision':accuracy,
+                              'Date':date,'Méthode':'Pruning','Paramètres':parameters,
+                              'Nb(paramètres)':nb_params,'Training time(cpu)':cpu_times[k],
+                              'Training time(wall)':wall_times[k]}, ignore_index=True)
+        print('Méthode: ','Pruning',
+              'Modèle: ','CNN','Paramètre: ',
+              parameters['Nom du modèle'],'-> accuracy:',accuracy,
+              '-> time_cpu:',time_cpu,'->time_wall:',time_wall)
+    filename='results.csv'
     try:    
-        results=pd.read_csv(path)
+        results=pd.read_csv(path+filename)
         results=pd.concat((results,result),axis=0).reset_index(drop=True)
-        results.to_csv(path,index=False,header=True,encoding='utf-8-sig')
+        results.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
     except:
-        result.to_csv(path,index=False,header=True,encoding='utf-8-sig')
+        result.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
         
 send_pruning_results(couche1=32,
     couche2=64,
     dense=64,
-    iteration=50,
-    path='/home/arnaudhureaux/git-repo/deeplearning-cpu-optimization/outputs/results.csv')
+    iteration=50)
