@@ -11,8 +11,13 @@ import tensorflow.keras.backend as K
 from statistics import mean
 
 def get_path_outputs():
-    return os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','')+'/outputs'
-
+    path=os.path.dirname(os.path.abspath(__file__))
+    if '/' in path:
+        return path.replace('/src/dlcpu','')+'/outputs'
+    elif '\\' in path: 
+        path=path.replace('\\','/')
+        return path.replace('/src/dlcpu','/outputs/')
+        
 def get_paramaters_number(model):
     trainable_count = np.sum([K.count_params(w) for w in model.trainable_weights])
     non_trainable_count = np.sum([K.count_params(w) for w in model.non_trainable_weights])
@@ -134,9 +139,9 @@ def send_pruning_results(couche1,couche2,dense,iteration,train,pred):
     except:
         result.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
         
-send_pruning_results(couche1=32,
-    couche2=64,
-    dense=64,
+send_pruning_results(couche1=16,
+    couche2=16,
+    dense=32,
     iteration=50,
     train='CPU',
     pred='CPU')

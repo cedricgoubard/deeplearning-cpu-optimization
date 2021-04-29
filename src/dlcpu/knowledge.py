@@ -100,7 +100,12 @@ class Distiller(tf.keras.Model):
         return results
     
 def get_path_outputs():
-    return os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','')+'/outputs'
+    path=os.path.dirname(os.path.abspath(__file__))
+    if '/' in path:
+        return path.replace('/src/dlcpu','')+'/outputs'
+    elif '\\' in path: 
+        path=path.replace('\\','/')
+        return path.replace('/src/dlcpu','/outputs/')
     
 def compile_model(model):
     model.compile(
@@ -229,9 +234,9 @@ def send_knowledge_results(couche1,couche2,dense,iteration,train,pred):
             result.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
 
 send_knowledge_results(
-    couche1=32,
-    couche2=64,
-    dense=64,
+    couche1=16,
+    couche2=16,
+    dense=32,
     iteration=30,
-    train='GPU',
-    pred='GPU')
+    train='CPU',
+    pred='CPU')

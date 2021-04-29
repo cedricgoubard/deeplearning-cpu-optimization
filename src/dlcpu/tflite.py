@@ -10,7 +10,12 @@ import pandas as pd
 import os
 
 def get_path_outputs():
-    return os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','')+'/outputs'
+    path=os.path.dirname(os.path.abspath(__file__))
+    if '/' in path:
+        return path.replace('/src/dlcpu','')+'/outputs'
+    elif '\\' in path: 
+        path=path.replace('\\','/')
+        return path.replace('/src/dlcpu','/outputs/')
 
 def get_data():
     cifar100 = tf.keras.datasets.cifar100
@@ -170,6 +175,28 @@ def get_tfl_model(model,path_output):
     temps_cpu=stop_cpu-start_cpu
     temps_wall=stop_wall-start_wall
     return interpreter
+
+def get_tfl_batch_model(model,path_output):
+    start_cpu,start_wall=process_time(),time()
+    tf_lite_converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    tf_lite_converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    tflite_model = tf_lite_converter.convert()
+    tfl_modelname = path_output+'TFlite_post_quantModel8bit'
+    open(tfl_modelname, "wb").write(tflite_model)
+
+    interpreter = tf.lite.Interpreter(model_path = tfl_modelname)
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    input_shape = input_details[0]['shape']
+    output_shape = output_details[0]['shape']
+    interpreter.resize_tensor_input(input_details[0]['index'], [1000, input_shape[1], input_shape[2], input_shape[3]])
+    interpreter.resize_tensor_input(output_details[0]['index'],[1000, output_shape[1]])
+    interpreter.allocate_tensors()
+    stop_cpu,stop_wall=process_time(),time()
+    temps_cpu=stop_cpu-start_cpu
+    temps_wall=stop_wall-start_wall
+    return interpreter
+
 #pour les modèles classiques
 def get_time(model_input,parameters,nb_test):
     _,_,x_test,y_test,_=get_data()
@@ -196,7 +223,7 @@ def tfl_prediction(X_test_numpy,i):
     tflite_model_predictions = interpreter.get_tensor(16)
     prediction_classes = np.argmax(tflite_model_predictions, axis=1)
     return prediction_classes[0]
-    
+
 def get_tfl_time(interpreter,parameters,nb_test):
     _,_,_,y_test,X_test_numpy=get_data()
     nb_params=None
@@ -232,6 +259,15 @@ def get_prediction_tfl(x,interpreter):
     tflite_model_predictions = interpreter.get_tensor(16)
     prediction_classes = np.argmax(tflite_model_predictions, axis=1)
     return prediction_classes[0]
+
+def get_tfl_batch_prediction(x,interpreter):
+    inp = x
+    interpreter.set_tensor(0,inp )
+    interpreter.invoke()
+    tflite_model_predictions = interpreter.get_tensor(16)
+    prediction_classes = np.argmax(tflite_model_predictions, axis=1)
+    return prediction_classes
+
 def get_batch_time(model,method):
     _,_,x_test,_,X_test_numpy=get_data()
     if method=='tfl':
@@ -239,11 +275,9 @@ def get_batch_time(model,method):
         time_cpu=[]
         for k in range(5):
             start_wall,start_cpu=time(),process_time()
-            pred=[]
-            for k in X_test_numpy:
-                pred.append(get_prediction_tfl(k,interpreter))
+            pred=get_tfl_batch_prediction(X_test_numpy[0:1000],interpreter)
             stop_wall,stop_cpu=time(),process_time()
-            time_cpu.append(stop_cpu-start_cpu)
+            time_cpu.append(stop_wall-start_wall)
         return mean(time_cpu)
     elif method=='classic':
         time_cpu=[]
@@ -303,11 +337,12 @@ def send_tflite_results(nb_test,couche1,couche2,dense,train,pred):
         for k in range(len(names)):
             start_cpu,start_wall=process_time(),time()
             interpreter=get_tfl_model(models[k],path_output)
+            interpreter_batch=get_tfl_batch_model(models[k],path_output)
             stop_cpu,stop_wall=process_time(),time()
             temps_cpu_l=stop_cpu-start_cpu
             temps_wall_l=stop_wall-start_wall
             time_cpu,time_wall,accuracy,date,parameters,nb_params=get_tfl_time(interpreter,names[k],nb_test)
-            time_batch=get_batch_time(interpreter,'tfl')
+            time_batch=get_batch_time(interpreter_batch,'tfl')
             result=send_data(result,time_cpu,time_wall,
                              accuracy,date,parameters,nb_params,
                              temps_cpu_l+cpu_times[k],
@@ -322,9 +357,10 @@ def send_tflite_results(nb_test,couche1,couche2,dense,train,pred):
         result.to_csv(path_output+filename,index=False,header=True,encoding='utf-8-sig')
         
         
-result=send_tflite_results(nb_test=100,
-    couche1=8,
-    couche2=8,
-    dense=8,
-    train='GPU',
+result=send_tflite_results(
+    nb_test=1000,
+    couche1=16,
+    couche2=16,
+    dense=32,
+    train='CPU',
     pred='CPU')
