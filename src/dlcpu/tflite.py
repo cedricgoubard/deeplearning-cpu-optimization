@@ -8,6 +8,7 @@ import tensorflow_model_optimization as tfmot
 import numpy as np
 import pandas as pd
 import os
+import yaml
 
 def get_path_outputs():
     return os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','')+'/outputs'
@@ -266,7 +267,20 @@ def send_data(result,time_cpu,time_wall,accuracy,date,parameters,
                          'Train':train,'Pred':pred}, ignore_index=True)
     return result
 
-def send_tflite_results(nb_test,couche1,couche2,dense,train,pred):
+def send_tflite_results():
+    print('Start of the execution of tflite.py...')
+    path_yaml=os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','/cfg.yaml')
+    with open(path_yaml) as file:
+        config = yaml.full_load(file)
+
+    couche1=config['MODEL_TYPE']['couche1']
+    couche2=config['MODEL_TYPE']['couche2']
+    dense=config['MODEL_TYPE']['dense']
+    train=config['MODEL_TYPE']['train']
+    pred=config['MODEL_TYPE']['pred']
+    nb_test=config['TFLITE']['nb_test']
+
+    print('Training and evaluation of the 3 classics models (baseline, quantized, weight clustered)...')
     with tf.device('/'+train+':0'):
         path_output=get_path_outputs()
 
@@ -289,7 +303,8 @@ def send_tflite_results(nb_test,couche1,couche2,dense,train,pred):
         wall_times=[simple_wall,simple_wall+clust_wall,prequant_wall+quant_wall]
         names=['Baseline','Weight_Clustering','Quantized']
         models=[model,model_clustered,model_quantized]
-
+    print('Training and evaluation of the 3 Tflite models transform create for the 3 precedents...')
+    
     with tf.device('/'+pred+':0'):    
         for k in range(len(names)):
             time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],names[k],nb_test)
@@ -313,18 +328,23 @@ def send_tflite_results(nb_test,couche1,couche2,dense,train,pred):
                              temps_cpu_l+cpu_times[k],
                              temps_wall_l+wall_times[k],time_batch,
                              train,pred)
-    filename='results.csv'
+    filename='/results.csv'
+    print('Exportation of result in :',path_output+filename)
     try:    
         results=pd.read_csv(path_output+filename)
         results=pd.concat((results,result),axis=0).reset_index(drop=True)
         results.to_csv(path_output+filename,index=False,header=True,encoding='utf-8-sig')
     except:
         result.to_csv(path_output+filename,index=False,header=True,encoding='utf-8-sig')
-        
-        
-result=send_tflite_results(nb_test=100,
-    couche1=8,
-    couche2=8,
-    dense=8,
-    train='GPU',
-    pred='CPU')
+    print('End of the execution of tflite.py.')
+ 
+if __name__ == "__main__":       
+    send_tflite_results()
+
+
+# couche1=config['MODEL_TYPE']['couche1']
+# couche2=config['MODEL_TYPE']['couche2']
+# dense=config['MODEL_TYPE']['dense']
+# train=config['MODEL_TYPE']['train']
+# pred=config['MODEL_TYPE']['pred']
+# iteration=config['MODEL_TYPE']['iteration']

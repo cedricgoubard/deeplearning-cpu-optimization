@@ -6,6 +6,7 @@ from sklearn.metrics import accuracy_score
 import pandas as pd
 from datetime import datetime
 import os
+import yaml
 
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
 x_train = x_train.astype("float32") / 255.0
@@ -157,7 +158,19 @@ def get_student(couche1,couche2,dense):
         name="student",)
     return student
 
-def send_knowledge_results(couche1,couche2,dense,iteration,train,pred):
+def send_knowledge_results():
+    print('Start execution of knowledge.py...')
+
+    path_yaml=os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','/cfg.yaml')
+    with open(path_yaml) as file:
+        config = yaml.full_load(file)
+
+    couche1=config['MODEL_TYPE']['couche1']
+    couche2=config['MODEL_TYPE']['couche2']
+    dense=config['MODEL_TYPE']['dense']
+    train=config['MODEL_TYPE']['train']
+    pred=config['MODEL_TYPE']['pred']
+    iteration=config['MODEL_TYPE']['iteration']
     path=get_path_outputs()
     
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar100.load_data()
@@ -167,6 +180,7 @@ def send_knowledge_results(couche1,couche2,dense,iteration,train,pred):
     with tf.device('/'+train+':0'):    
         # teacher
         start_cpu,start_wall=process_time(),time()
+        print('Training of a teacher model...')
         teacher=get_teacher(couche1,couche2,dense)
         compile_model(teacher)
         fit(teacher)
@@ -174,6 +188,7 @@ def send_knowledge_results(couche1,couche2,dense,iteration,train,pred):
         teacher_cpu=stop_cpu-start_cpu
         teacher_wall=stop_wall-start_wall
         # student
+        print('Training of a student model...')
         start_cpu,start_wall=process_time(),time()
         student=get_student(couche1,couche2,dense)
         distiller = Distiller(student=student, teacher=teacher)
@@ -190,6 +205,7 @@ def send_knowledge_results(couche1,couche2,dense,iteration,train,pred):
         student_cpu=stop_cpu-start_cpu
         student_wall=stop_wall-start_wall
         # baseline
+        print('Training of a baseline model...')
         start_cpu,start_wall=process_time(),time()
         student_scratch = tf.keras.models.clone_model(student)
         student_scratch._name='baseline'
@@ -206,6 +222,7 @@ def send_knowledge_results(couche1,couche2,dense,iteration,train,pred):
                                  'Méthode','Paramètres','CPU + Sys time',
                                  'Précision','Wall Time','Training time(cpu)',
                                  'Training time(wall)','Train','Pred'])
+    print('Evaluations of the 3 models...')
     with tf.device('/'+pred+':0'):    
         for k in range(len(models)):
             time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],iteration)
@@ -220,18 +237,16 @@ def send_knowledge_results(couche1,couche2,dense,iteration,train,pred):
                   parameters['Nom du modèle'],'--> time_cpu:',
                   time_cpu,'->time_wall:',
                   time_wall,'-> accuracy:',accuracy)
-        filename='results.csv'
+        filename='/results.csv'
+        print('Exportation of result in :',path+filename)
         try:    
             results=pd.read_csv(path+filename)
             results=pd.concat((results,result),axis=0).reset_index(drop=True)
             results.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
         except:
             result.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
+        print('End of the execution of knowledge.py.')
 
-send_knowledge_results(
-    couche1=32,
-    couche2=64,
-    dense=64,
-    iteration=30,
-    train='GPU',
-    pred='GPU')
+if __name__ == "__main__":
+    send_knowledge_results()
+

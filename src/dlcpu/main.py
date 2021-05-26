@@ -1,13 +1,9 @@
-from format import SendFormatResults
-from knowledge import SendKnowledgeResults
-from pruning import SendPruningResults
-from tflite import SendTFliteResults
+#from format import SendFormatResults
+from knowledge import send_knowledge_results
+from pruning import send_pruning_results
+from tflite import send_tflite_results
 
-print('Waiting for the Format experimentation...')
-SendFormatResults()
-print('Waiting for the TFlite experimentation (including weight clustering and quantization)...')
-SendTFliteResults()
-print('Waiting for the Pruning experimentation...')
-SendPruningResults()
-print('Waiting for the Knowledge Distillation experimentation...')
-SendKnowledgeResults()
+#SendFormatResults()
+send_tflite_results()
+send_pruning_results()
+send_knowledge_results()

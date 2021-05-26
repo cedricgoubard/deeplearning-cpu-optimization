@@ -132,12 +132,13 @@ def send_format_results(layers_types,
         results.to_csv(path_output+filename,index=False,header=True,encoding='utf-8-sig')
     except:
         result.to_csv(path_output+filename,index=False,header=True,encoding='utf-8-sig')
-        
-send_format_results(layers_types=[None],#=['float32','float64'],
-                    inputs_types=[None],#=['int8','int16','int32','float16','float32'],
-                    couche1=32,
-                    couche2=32,
-                    dense=64,
-                    iteration=30,
-                    train='CPU',
-                    pred='CPU')
+
+if __name__ == "__main__":
+    send_format_results(layers_types=[None],#=['float32','float64'],
+                        inputs_types=[None],#=['int8','int16','int32','float16','float32'],
+                        couche1=32,
+                        couche2=32,
+                        dense=64,
+                        iteration=30,
+                        train='CPU',
+                        pred='CPU')

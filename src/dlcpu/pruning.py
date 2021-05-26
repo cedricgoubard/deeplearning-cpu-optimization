@@ -9,6 +9,7 @@ import pandas as pd
 from datetime import datetime
 import tensorflow.keras.backend as K
 from statistics import mean
+import yaml
 
 def get_path_outputs():
     return os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','')+'/outputs'
@@ -97,7 +98,20 @@ def get_time(model,x_test,y_test,iteration):
         accuracys.append(accuracy_score(np.argmax(y_pred,1),y_test))
     return mean(temps_cpu),mean(temps_wall),mean(accuracys),date,parameters,nb_params
 
-def send_pruning_results(couche1,couche2,dense,iteration,train,pred):
+def send_pruning_results():
+    print('Start execution of pruning.py...')
+
+    path_yaml=os.path.dirname(os.path.abspath(__file__)).replace('/src/dlcpu','/cfg.yaml')
+    with open(path_yaml) as file:
+        config = yaml.full_load(file)
+
+    couche1=config['MODEL_TYPE']['couche1']
+    couche2=config['MODEL_TYPE']['couche2']
+    dense=config['MODEL_TYPE']['dense']
+    train=config['MODEL_TYPE']['train']
+    pred=config['MODEL_TYPE']['pred']
+    iteration=config['MODEL_TYPE']['iteration']
+    print('Training of a pruned and a baseline model...')
     with tf.device('/'+train+':0'):   
         path=get_path_outputs()
         cifar100 = tf.keras.datasets.cifar100
@@ -114,6 +128,7 @@ def send_pruning_results(couche1,couche2,dense,iteration,train,pred):
                                  'Méthode','Paramètres','CPU + Sys time',
                                  'Précision','Wall Time','Training time(cpu)',
                                  'Training time(wall)'])
+    print('Evaluation of the pruned and the baseline model...')
     with tf.device('/'+pred+':0'):   
         for k in range(len(models)):
             time_cpu,time_wall,accuracy,date,parameters,nb_params=get_time(models[k],x_test,y_test,iteration)
@@ -126,17 +141,16 @@ def send_pruning_results(couche1,couche2,dense,iteration,train,pred):
                   'Modèle: ','CNN','Paramètre: ',
                   parameters['Nom du modèle'],'-> accuracy:',accuracy,
                   '-> time_cpu:',time_cpu,'->time_wall:',time_wall)
-        filename='results.csv'
+    filename='/results.csv'
+    print('Exportation of result in :',path+filename,'...')
     try:    
         results=pd.read_csv(path+filename)
         results=pd.concat((results,result),axis=0).reset_index(drop=True)
         results.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
     except:
         result.to_csv(path+filename,index=False,header=True,encoding='utf-8-sig')
-        
-send_pruning_results(couche1=32,
-    couche2=64,
-    dense=64,
-    iteration=50,
-    train='CPU',
-    pred='CPU')
+    print('End of the execution of pruning.py.')
+
+if __name__ == "__main__":     
+    send_pruning_results()
+
